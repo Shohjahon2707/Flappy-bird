@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Flappy Bird Telegram</title>
+<style>
+  body { margin: 0; background: #70c5ce; overflow: hidden; }
+  canvas { display: block; margin: auto; background: #70c5ce; }
+</style>
+</head>
+<body>
+<canvas id="game" width="288" height="512"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let frames = 0;
+const DEGREE = Math.PI / 180;
+
+// Загрузка изображений
+const sprite = new Image();
+sprite.src = "https://i.ibb.co/Q9yv5Jk/sprite.png";
+
+// Загрузка звуков
+const SCORE_S = new Audio();
+SCORE_S.src = "https://raw.githubusercontent.com/sourabhv/FlapPyBird/master/audio/point.wav";
+
+const FLAP = new Audio();
+FLAP.src = "https://raw.githubusercontent.com/sourabhv/FlapPyBird/master/audio/wing.wav";
+
+const HIT = new Audio();
+HIT.src = "https://raw.githubusercontent.com/sourabhv/FlapPyBird/master/audio/hit.wav";
+
+// Птичка
+const bird = {
+    animation: [
+        { sX: 276, sY: 112 },
+        { sX: 276, sY: 139 },
+        { sX: 276, sY: 164 },
+        { sX: 276, sY: 139 }
+    ],
+    x: 50,
+    y: 150,
+    w: 34,
+    h: 26,
+
+    radius: 12,
+    frame: 0,
+
+    gravity: 0.25,
+    jump: 4.6,
+    speed: 0,
+    rotation: 0,
+
+    draw: function(){
+        let birdFrame = this.animation[this.frame];
+        ctx.drawImage(sprite, birdFrame.sX, birdFrame.sY, this.w, this.h, this.x - this.w/2, this.y - this.h/2, this.w, this.h);
+    },
+
+    flap: function(){
+        this.speed = -this.jump;
+        FLAP.play();
+    },
+
+    update: function(){
+        // в меню птичка машет крыльями
+        this.period = state.current == state.getReady ? 10 : 5;
+        this.frame += frames % this.period == 0 ? 1 : 0;
+        this.frame = this.frame % this.animation.length;
+
+        if(state.current == state.getReady){
+            this.y = 150;
+            this.rotation = 0 * DEGREE;
+        } else {
+            this.speed += this.gravity;
+            this.y += this.speed;
+
+            if(this.y + this.h/2 >= canvas.height - 112){
+                this.y = canvas.height - 112 - this.h/2;
+                if(state.current == state.game) {
+                    state.current = state.over;
+                    HIT.play();
+                    sendScore(score.value);
+                }
+            }
+
+            if(this.speed >= this.jump){
+                this.rotation = 90 * DEGREE;
+                this.frame = 1;
+            } else {
+                this.rotation = -25 * DEGREE;
+            }
+        }
+    }
+};
+
+// Состояния игры
+const state = {
+    current: 0,
+    getReady: 0,
+    game: 1,
+    over: 2
+};
+
+// Счёт
+const score = {
+    value: 0,
+    best: 0,
+    draw: function(){
+        ctx.fillStyle = "#FFF";
+        ctx.strokeStyle = "#000";
+
+        if(state.current == state.game){
+            ctx.lineWidth = 2;
+            ctx.font = "35px Arial";
+            ctx.fillText(this.value, canvas.width/2, 50);
+            ctx.strokeText(this.value, canvas.width/2, 50);
+        }
+    },
+    reset: function(){
+        this.value = 0;
+    }
+};
+
+// Объект труб
+const pipes = {
+    position: [],
+    top: { sX: 553, sY: 0 },
+    bottom: { sX: 502, sY: 0 },
+    w: 53,
+    h: 400,
+    gap: 85,
+    maxYPos: -150,
+    dx: 2,
+
+    draw: function(){
+        for(let i = 0; i < this.position.length; i++){
+            let p = this.position[i];
+            let topYPos = p.y;
+            let bottomYPos = p.y + this.h + this.gap;
+
+            ctx.drawImage(sprite, this.top.sX, this.top.sY, this.w, this.h, p.x, topYPos, this.w, this.h);
+            ctx.drawImage(sprite, this.bottom.sX, this.bottom.sY, this.w, this.h, p.x, bottomYPos, this.w, this.h);
+        }
+    },
+
+    update: function(){
+        if(state.current !== state.game) return;
+
+        if(frames % 100 === 0){
+            this.position.push({
+                x: canvas.width,
+                y: this.maxYPos * (Math.random() + 1)
+            });
+        }
+
+        for(let i = 0; i < this.position.length; i++){
+            let p = this.position[i];
+
+            let bottomPipeY = p.y + this.h + this.gap;
+            if(bird.x + bird.radius > p.x && bird.x - bird.radius < p.x + this.w &&
+               (bird.y - bird.radius < p.y + this.h && bird.y + bird.radius > p.y ||
+                bird.y + bird.radius > bottomPipeY && bird.y - bird.radius < bottomPipeY + this.h)){
+                state.current = state.over;
+                HIT.play();
+                sendScore(score.value);
+            }
+
+            p.x -= this.dx;
+
+            if(p.x + this.w <= 0){
+                this.position.shift();
+                score.value += 1;
+                SCORE_S.play();
+            }
+        }
+    },
+
+    reset: function(){
+        this.position = [];
+    }
+};
+
+// Фон и земля
+const bg = {
+    sX: 0,
+    sY: 0,
+    w: 275,
+    h: 226,
+    draw: function(){
+        ctx.drawImage(sprite, this.sX, this.sY, this.w, this.h, 0, canvas.height - this.h, this.w, this.h);
+    }
+};
+
+const fg = {
+    sX: 276,
+    sY: 0,
+    w: 224,
+    h: 112,
+    draw: function(){
+        ctx.drawImage(sprite, this.sX, this.sY, this.w, this.h, 0, canvas.height - this.h, this.w, this.h);
+    }
+};
+
+// Управление
+canvas.addEventListener("click", function(){
+    switch(state.current){
+        case state.getReady:
+            state.current = state.game;
+            break;
+        case state.game:
+            bird.flap();
+            break;
+        case state.over:
+            pipes.reset();
+            bird.speed = 0;
+            bird.y = 150;
+            score.reset();
+            state.current = state.getReady;
+            break;
+    }
+});
+
+function draw(){
+    ctx.fillStyle = "#70c5ce";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    pipes.draw();
+    fg.draw();
+    bird.draw();
+    score.draw();
+}
+
+function update(){
+    bird.update();
+    pipes.update();
+}
+
+function loop(){
+    update();
+    draw();
+    frames++;
+    requestAnimationFrame(loop);
+}
+loop();
+
+// Отправка очков в бота
+function sendScore(points){
+    if(window.Telegram && Telegram.WebApp){
+        Telegram.WebApp.sendData(JSON.stringify({ score: points }));
+    }
+}
+</script>
+</body>
+</html>
